@@ -10,8 +10,8 @@ import os
 import gc
 from pyspark.sql.types import BooleanType
 
-
-from tweet_filter import pre_process
+# Customized import
+from tweet_preprocess import keyword_filter
 
 
 conf = SparkConf()
@@ -33,9 +33,11 @@ regex_pattern = "(?i)" + "|".join(test_list)
 regex_pattern_hashtag = "(?i)" + "|".join([x.strip(' ') for x in test_list])
 
 
-raw = spark.read.json("./sample_data/*.json", allowBackslashEscapingAnyCharacter=True)
+raw_sdf = spark.read.json("./sample_data/*.json", allowBackslashEscapingAnyCharacter=True)
 
-print(type(raw))
+print('====')
+print(raw_sdf.count())
+raw_sdf.show()
 
 
 spark.stop()

@@ -1,3 +1,8 @@
+
+# can refer to twitter API for better understanding:
+# https :/ /developer.twitter.co m /e n /doc s /twitte r -ap i /v 1 /dat a -dictionar y /objec t -mode l /tweet
+
+
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkConf, SparkContext
 import pyspark
@@ -26,20 +31,17 @@ import gc
 #
 # # raw = spark.read.json("./sample_data/*.json", allowBackslashEscapingAnyCharacter=True)
 # # raw = spark.read.json("./202202*/*.json", allowBackslashEscapingAnyCharacter=True)
-def keyword_filter(spark, regex_pattern, folder):
-    raw = spark.read.json(folder+"/*.json.gz", allowBackslashEscapingAnyCharacter=True)
-    # twitter json counts
-    # print(raw.count())
-    '''
-        Step 1:
-        Save all tweets, include original tweets in the dataset and retweeted / quoted tweets
+def keyword_filter(sdf, keyword_ls, check_text=True, check_hashtag=True, **kwargs):
+    """
+    Given a dataframe, filtered the tweets by keyword list.
+    :param sdf:
+    :param keyword_ls:
+    :param kwargs:
+    :return:
+    """
 
-        only select necessary columns
-        can refer to twitter API for better understanding:
-        https://developer.twitter.com/en/docs/twitter-api/v1/data-dictionary/object-model/tweet
-    '''
 
-    twitter_df = raw.select("created_at", "id_str", col("user.id_str").alias("user_id_str"),
+    twitter_df = sdf.select("created_at", "id_str", col("user.id_str").alias("user_id_str"),
                             col("user.screen_name").alias("user_twitter_handle"),
                             "in_reply_to_status_id_str", "in_reply_to_user_id_str", "in_reply_to_screen_name",
                             "retweeted_status",
