@@ -3,7 +3,7 @@ from py4j.protocol import Py4JJavaError
 from pyspark import SparkConf, SparkContext
 import pyspark
 from pyspark.sql import SparkSession, SQLContext
-from pyspark.sql.functions import explode, col, udf, concat_ws, from_json, lit, array, expr, size
+from pyspark.sql.functions import explode, col, udf, concat_ws, from_json, lit, array, expr, size,translate
 from pyspark.sql.functions import sum as _sum
 from pyspark.sql.types import *
 import json
@@ -153,7 +153,7 @@ def pre_process(folder, candidate_ls):
 
 cnt = 0
 filter_df = None
-for folder in [x[0] for x in os.walk("xiangyi_sample_data")]:
+for folder in [x[0] for x in os.walk("./xiangyi_sample_data")]:
 
     if '20220' in folder:  # inside a daily folder
         try:
@@ -195,6 +195,10 @@ filter_df = filter_df.withColumn("connected_user_clean", expr('filter(connected_
 original_filter_df = filter_df.filter(size(filter_df.connected_user_clean) == 0)
 
 print('===== Original filtered ')
+original_filter_df = original_filter_df.drop('hashtags', 'connected_user_clean')
+original_filter_df = original_filter_df.withColumn('text', translate('text', '\n', '\\n'))
+original_filter_df.write.options(header='True').mode('overwrite').csv('./xiangyi_sample_data/temp_result/intermediate_orig_df')
+
 original_filter_df.show()
 
 
@@ -205,7 +209,10 @@ filter_df = filter_df.filter(size(filter_df.connected_user_clean) > 0)
 filter_conn_rdd = filter_df.withColumn("connected_user_single", explode(filter_df.connected_user_clean)).rdd
 filter_conn_df = filter_conn_rdd.toDF()
 filter_conn_df = filter_conn_df.drop('hashtags', 'connected_user_clean')
-filter_conn_df.write.mode('overwrite').csv('./xiangyi_sample_data/temp_result/intermediate_df')
+print('===== Filter connection df')
+filter_conn_df = filter_conn_df.withColumn('text', translate('text', '\n', '\\n'))
+filter_conn_df.show()
+filter_conn_df.write.options(header='True').mode('overwrite').csv('./xiangyi_sample_data/temp_result/intermediate_conn_df')
 
 
 
