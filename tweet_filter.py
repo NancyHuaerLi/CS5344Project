@@ -27,7 +27,7 @@ regex_pattern = "(?i)" + "|".join(test_list)
 regex_pattern_hashtag = "(?i)" + "|".join([x.strip(' ') for x in test_list])
 
 
-# raw = spark.read.json("./sample_data/*.json", allowBackslashEscapingAnyCharacter=True)
+# raw = spark.read.json("./xiangyi_sample_data/*.json", allowBackslashEscapingAnyCharacter=True)
 # raw = spark.read.json("./202202*/*.json", allowBackslashEscapingAnyCharacter=True)
 def pre_process(folder):
     raw = spark.read.json(folder+"/*.json.gz", allowBackslashEscapingAnyCharacter=True)

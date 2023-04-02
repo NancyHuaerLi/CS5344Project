@@ -29,7 +29,7 @@ import gc
 # regex_pattern_hashtag = "(?i)" + "|".join([x.strip(' ') for x in test_list])
 #
 #
-# # raw = spark.read.json("./sample_data/*.json", allowBackslashEscapingAnyCharacter=True)
+# # raw = spark.read.json("./xiangyi_sample_data/*.json", allowBackslashEscapingAnyCharacter=True)
 # # raw = spark.read.json("./202202*/*.json", allowBackslashEscapingAnyCharacter=True)
 def keyword_filter(sdf, keyword_ls, check_text=True, check_hashtag=True, **kwargs):
     """

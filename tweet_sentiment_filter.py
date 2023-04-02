@@ -33,20 +33,18 @@ regex_pattern = "(?i)" + "|".join(test_list)
 regex_pattern_hashtag = "(?i)" + "|".join([x.strip(' ') for x in test_list])
 
 
-# get candidate list, read csv into pdf
-
-# cand_score_df = spark.read.csv('./sample_data/pagerank_top_10.csv')
+# get candidate list
+# cand_score_df = spark.read.csv('./xiangyi_sample_data/pagerank_top_10.csv')
 # cand_df = cand_score_df.toDF('cand_id_str', 'rank_score').select('cand_id_str')
-cand_df = pd.read_csv('./sample_data/pagerank_top_10.csv')
+cand_df = pd.read_csv('./sample_top10/pagerank_top_10.csv')
 cand_ls = list(cand_df.iloc[:, 0])
 cand_ls = [str(x) for x in cand_ls]
 
+print(' ==== candidates selected by PageRank')
+print(cand_ls)
 
-# mock-up top user
-# cand_ls = ['1407673343973675010', '1389342743948894209']
 
-
-# raw = spark.read.json("./sample_data/*.json", allowBackslashEscapingAnyCharacter=True)
+# raw = spark.read.json("./xiangyi_sample_data/*.json", allowBackslashEscapingAnyCharacter=True)
 # raw = spark.read.json("./202202*/*.json", allowBackslashEscapingAnyCharacter=True)
 def pre_process(folder, candidate_ls):
     raw = spark.read.json(folder+"/*.json.gz", allowBackslashEscapingAnyCharacter=True)
@@ -77,7 +75,7 @@ def pre_process(folder, candidate_ls):
                             col("retweeted_status.user.id_str").alias("retweeted_original_user_id_str")
                             )
 
-    # filtered by candidates
+    # filtered by candidate list
     # twitter_df = twitter_df.filter((twitter_df.user_id_str in candidate_ls) |
     #                             (twitter_df.quoted_original_user_id_str in candidate_ls) |
     #                             (twitter_df.retweeted_original_user_id_str in candidate_ls) |
@@ -155,7 +153,7 @@ def pre_process(folder, candidate_ls):
 
 cnt = 0
 filter_df = None
-for folder in [x[0] for x in os.walk("./sample_data")]:
+for folder in [x[0] for x in os.walk("xiangyi_sample_data")]:
 
     if '20220' in folder:  # inside a daily folder
         try:
@@ -193,25 +191,23 @@ filter_df = filter_df.withColumn("connected_user_clean", expr('filter(connected_
     "connected_user")
 
 
-# TODO: add a column to show if it is original tweet
-# filter_df = filter_df.filter(size(filter_df.connected_user_clean) > 0)
+# get original tweets
+original_filter_df = filter_df.filter(size(filter_df.connected_user_clean) == 0)
 
-filter_df.show()
+print('===== Original filtered ')
+original_filter_df.show()
+
+
+# remove those without
+filter_df = filter_df.filter(size(filter_df.connected_user_clean) > 0)
 
 # each line make sure have only one user and one connected user
-sdf = filter_df.withColumn("connected_user_single", explode(filter_df.connected_user_clean)).rdd
-print('====')
-print(len(sdf.collect()))
-to_save_sdf = sdf.toDF()  # .write.mode('overwrite').csv('intermediate_rdd')
-to_save_sdf = to_save_sdf.select('user_id_str', 'connected_user_single', 'text')
-to_save_sdf.printSchema()
-to_save_sdf = to_save_sdf.filter(col('connected_user_single').isNull())
-# to_save_sdf.printSchema()
+filter_conn_rdd = filter_df.withColumn("connected_user_single", explode(filter_df.connected_user_clean)).rdd
+filter_conn_df = filter_conn_rdd.toDF()
+filter_conn_df = filter_conn_df.drop('hashtags', 'connected_user_clean')
+filter_conn_df.write.mode('overwrite').csv('./xiangyi_sample_data/temp_result/intermediate_df')
 
-# print('to save df')
-# to_save_sdf.show()
-# del filter_df
-# gc.collect()
+
 
 # # for each user how many times retweet/replay/quote other tweets
 # user_interact_rdd = rdd.map(lambda x: (x[2], 1))

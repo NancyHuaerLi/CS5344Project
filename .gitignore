@@ -2,4 +2,4 @@
 # ignore folders
 .idea/
 __pycache__/
-test_data/
+xiangyi_*/
