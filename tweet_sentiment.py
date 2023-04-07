@@ -9,14 +9,12 @@ from py4j.protocol import Py4JJavaError
 from pyspark import SparkConf, SparkContext
 import pyspark
 from pyspark.sql import SparkSession, SQLContext
-from pyspark.sql.functions import explode, col, udf, concat_ws, from_json, lit, array, expr, size, when, count, avg, sum
-from pyspark.sql.functions import sum as _sum
 from pyspark.sql.types import *
-import json
+from pyspark.sql.functions import explode, col, udf, concat_ws, from_json, lit, array, expr, size, when, count, avg, sum
+
+
 import ast
-import os
-import gc
-from pyspark.sql.types import BooleanType
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 conf = SparkConf()
 sc = SparkContext(conf=conf)
@@ -25,28 +23,12 @@ sc.setLogLevel("ERROR")
 spark = SparkSession.builder.appName("twitter_applications") \
     .config("spark.sql.files.ignoreCorruptFiles", "true").getOrCreate()
 
-import glob
-
-import nltk
-from nltk.sentiment import SentimentIntensityAnalyzer
-
-# To get resources we need.
-nltk.download(
-    "names",
-    "stopwords",
-    "state_union",
-    # "twitter_samples",
-    # "movie_reviews",
-    "averaged_perceptron_tagger",
-    "vader_lexicon",
-    "punkt",
-)
 
 # siaa = SentimentIntensityAnalyzer()
 # score = siaa.polarity_scores("Wow, I love you!")
-
+# print(score)
 # print(type(score))
-# breakpoint()
+
 
 @udf
 def sentiment_scorer(text):
@@ -69,14 +51,52 @@ def get_value_by_key_dict(dict_str, key=None):
 
 
 # step 1: load intermediate data
-original_file_path = glob.glob('./xiangyi_sample_data/temp_result/intermediate_orig_df/*.csv')[0]
-conn_file_path = glob.glob('./xiangyi_sample_data/temp_result/intermediate_conn_df/*.csv')[0]
+# original_file_path = glob.glob('./xiangyi_sample_data/temp_result/intermediate_orig_df/*.csv')[0]
+# conn_file_path = glob.glob('./xiangyi_sample_data/temp_result/intermediate_conn_df/*.csv')[0]
+# original_df = spark.read.options(header='True').csv(original_file_path)
+# conn_df = spark.read.options(header='True').csv(conn_file_path)
 
-original_df = spark.read.options(header='True').csv(original_file_path)
-conn_df = spark.read.options(header='True').csv(conn_file_path)
+original_df = spark.read.json('./xiangyi_aws_input/original_tweet_intermediate_full/*.json')
+conn_df = spark.read.json('./xiangyi_aws_input/retweeted_tweet_intermediate_full/*.json')
+
+print('Before filter by candidates')
+# original_df.printSchema()
+# conn_df.printSchema()
+print(original_df.count())
+print(conn_df.count())
+
+cand_schema = StructType([
+    StructField('user_id_str', StringType()),
+    StructField('pagerank_score', FloatType()),
+    StructField('user_name', StringType()),
+])
+
+# load candidate list
+cand_sdf = spark.read.csv('./test_pokemon_damping/*.csv', schema=cand_schema).select('user_id_str').distinct()
+cand_sdf.printSchema()
+
+# cand_ls = list(cand_sdf.toPandas()['user_id_str'])
+# print(type(cand_ls[0]))
+# print(cand_ls)
+# cand_original_sdf = original_df.filter(original_df.user_id_str.isin(cand_ls))
+# cand_conn_sdf = conn_df.filter(conn_df.connected_user_single.isin(cand_ls))
+
+cand_original_sdf = original_df.join(cand_sdf, 'user_id_str', 'inner')
+cand_conn_sdf = conn_df.join(cand_sdf, [conn_df.connected_user_single == cand_sdf.user_id_str], 'inner')
 
 
-# step 2: get sentiment score of original tweetsC
+# cand_original_sdf_tmp = cand_original_sdf.select('user_id_str').distinct()
+# print(cand_original_sdf_tmp.count())
+# cand_conn_sdf_tmp = cand_conn_sdf.select('connected_user_single').distinct()
+# print(cand_conn_sdf_tmp.count())
+
+
+print('After filter by candidates')
+print(cand_original_sdf.count())
+print(cand_conn_sdf.count())
+
+
+# step 2: get sentiment score of original tweets
 def get_sentiment_score(sdf, text_col):
     sdf = sdf.withColumn('sentiment_output', sentiment_scorer(col(text_col)))
     sdf = sdf.withColumn('sentiment_neg', get_value_by_key_dict(col('sentiment_output'), lit('neg')).cast('double'))
@@ -90,40 +110,43 @@ def get_sentiment_score(sdf, text_col):
 # ###############################################
 # ############ Original #################
 # ###############################################
-original_df = get_sentiment_score(original_df, 'text')
+cand_original_sdf = get_sentiment_score(cand_original_sdf, 'text')
 
 # computer average compound score according user's all original tweets
-sen_original_df = original_df.select('user_id_str', 'sentiment_compound', 'sentiment_compound_ind')
+sen_original_df = cand_original_sdf.select('user_id_str', 'sentiment_compound', 'sentiment_compound_ind')
 
 
-agg_original_df = sen_original_df.groupBy("user_id_str").agg(
+sen_original_df = sen_original_df.groupBy("user_id_str").agg(
     count('*').alias('num_original_tweets'),
-    sum('sentiment_compound_ind').alias('num_pos_tweets'),
+    sum('sentiment_compound_ind').alias('num_pos_original_tweets'),
     avg('sentiment_compound').alias('avg_sentiment_compound')
 )
-# agg_original_df.printSchema()
-# agg_original_df.show()
+sen_original_df = sen_original_df.withColumn('rate_pos_original_tweets',
+                                             col('num_pos_original_tweets')/col('num_original_tweets'))
+
+sen_original_df.printSchema()
+# sen_original_df.show()
 
 
 # ###############################################
 # ############ Connect #################
 # ###############################################
 
-conn_df = get_sentiment_score(conn_df, 'text')
-conn_df.show()
+cand_conn_sdf = get_sentiment_score(cand_conn_sdf, 'text')
+sen_conn_df = cand_conn_sdf.select('connected_user_single', 'sentiment_compound', 'sentiment_compound_ind')
 
-conn_df = conn_df.groupBy("connected_user_single").agg(
+sen_conn_df = sen_conn_df.groupBy("connected_user_single").agg(
     count('*').alias('num_original_tweets_interacting'),
     sum('sentiment_compound_ind').alias('num_pos_tweets_interacting'),
     avg('sentiment_compound').alias('avg_sentiment_compound_interacting')
 )
-conn_df.printSchema()
-conn_df.show()
+sen_conn_df = sen_conn_df.withColumn('rate_pos_tweets_interacting',
+                                     col('num_pos_tweets_interacting')/col('num_original_tweets_interacting'))
+sen_conn_df.printSchema()
+# sen_conn_df.show()
 
-# conn_file_df.show()
-
-# xx = original_df.select('created_at').collect()
-# for x in xx:
-#     print(x)
+res_df = sen_original_df.join(sen_conn_df, [sen_original_df.user_id_str == sen_conn_df.connected_user_single], 'outer')
+# res_df.show(50)
+res_df.write.mode('overwrite').json('./sentiment_output/tweet_sentiment')
 
 spark.stop()
